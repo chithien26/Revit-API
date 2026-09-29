@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CTTools</Name>
+    <!-- Relative to the folder containing this .addin file -->
+    <Assembly>CTTools\CTTools.dll</Assembly>
+    <AddInId>652f987a-8627-41f6-b3ae-e9dc4d300c42</AddInId>
+    <FullClassName>CTTools.App</FullClassName>
+    <VendorId>CTTL</VendorId>
+    <VendorDescription>ChiThien, https://github.com/chithien26/Revit-API</VendorDescription>
+  </AddIn>
+</RevitAddIns>

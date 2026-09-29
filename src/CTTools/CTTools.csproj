@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Revit 2025 runs on .NET 8 -->
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PlatformTarget>x64</PlatformTarget>
+    <RootNamespace>CTTools</RootNamespace>
+    <AssemblyName>CTTools</AssemblyName>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RevitAddinsDir>$(AppData)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinsDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Revit ships these DLLs itself, so they must never be copied to the output.
+         Pinned to the first 2025 release so the add-in runs on every Revit 2025 update. -->
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.0.2" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.0.2" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="Npgsql" Version="9.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="LicenseConnectionString" Value="$(LicenseConnectionString)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="CTTools.addin" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Debug builds are deployed straight into Revit's per-user add-in folder for quick testing -->
+  <Target Name="DeployToRevit" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
+    <ItemGroup>
+      <DeployFiles Include="$(TargetDir)**\*.*" Exclude="$(TargetDir)CTTools.addin" />
+    </ItemGroup>
+    <Copy SourceFiles="$(TargetDir)CTTools.addin" DestinationFolder="$(RevitAddinsDir)" ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(RevitAddinsDir)\CTTools\%(RecursiveDir)" ContinueOnError="WarnAndContinue" />
+    <Message Importance="high" Text="Deployed CTTools to $(RevitAddinsDir)" />
+  </Target>
+
+</Project>

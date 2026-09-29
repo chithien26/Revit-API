@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Builds Debug (auto-deployed to %APPDATA%\Autodesk\Revit\Addins\2025), starts Revit, then asks which
+      // process to attach to: type "Revit" and press Enter. Revit must be closed first (it locks CTTools.dll).
+      "name": "Revit 2025",
+      "type": "coreclr",
+      "request": "attach",
+      "preLaunchTask": "start-revit",
+      "processId": "${command:pickProcess}"
+    },
+    {
+      "name": "Attach to Revit",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <Product>CTTools</Product>
+    <Company>ChiThien</Company>
+    <Authors>ChiThien</Authors>
+    <Copyright>Copyright © ChiThien $([System.DateTime]::Now.Year)</Copyright>
+    <Version>1.0.0</Version>
+
+    <RevitVersion>2025</RevitVersion>
+
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Not committed: defines LicenseConnectionString. See secrets.props.example -->
+  <Import Project="secrets.props" Condition="Exists('$(MSBuildThisFileDirectory)secrets.props')" />
+</Project>
