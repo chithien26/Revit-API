@@ -34,6 +34,10 @@ public class App : IExternalApplication
         annotate.AddButton<AutoDimElementsCommand>("Auto Dim\nElements", RibbonIcons.AutoDimElements,
             "Dimension beams, walls and columns to their nearest parallel grid (offset + width).");
 
+        var site = application.CreateRibbonPanel(TabName, "Site");
+        site.AddButton<TopoCommand>("Topo", RibbonIcons.Topo,
+            "Create and sculpt a toposolid: pad, contour lines, local mounds, smooth, slope, and edges.");
+
         var tools = application.CreateRibbonPanel(TabName, "Tools");
         tools.AddButton<LicenseTestCommand>("Test\nLicense", RibbonIcons.TestLicense,
             "Simplest licensed tool: runs only when your Autodesk account is licensed.");

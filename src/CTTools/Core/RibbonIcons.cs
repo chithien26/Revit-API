@@ -19,6 +19,15 @@ public static class RibbonIcons
     public static Func<int, ImageSource> ExportSchedules { get; } = IconFactory.Glyph('\uE80A', "#2E7D32");
     public static Func<int, ImageSource> FileFolders { get; } = IconFactory.Glyph('\uE838', "#EF6C00");
 
+    /// <summary>Contour lines, the mark used for the topography tool.</summary>
+    public static Func<int, ImageSource> Topo { get; } = IconFactory.Drawing("#2E7D32", p =>
+    {
+        p.Line(0.12, 0.72, 0.88, 0.66);
+        p.Line(0.16, 0.52, 0.84, 0.46);
+        p.Line(0.22, 0.34, 0.78, 0.28);
+        p.Line(0.32, 0.18, 0.68, 0.14);
+    });
+
     /// <summary>Two stacked dimension strings: overall + chain.</summary>
     public static Func<int, ImageSource> AutoDimAll { get; } = IconFactory.Drawing(AnnotateColor, p =>
     {

@@ -1,0 +1,83 @@
+<Window x:Class="CTTools.Features.Topo.TopoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CTTools Topo"
+        Width="420"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStyle="ToolWindow"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterScreen">
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+            <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#455A64"/>
+            <Button x:Name="RunButton" Content="Run" Height="32" IsDefault="True" Click="RunClick"/>
+        </StackPanel>
+        <StackPanel>
+            <TextBlock Text="New surfaces use this level and type." Foreground="#607D8B" Margin="0,0,0,6"/>
+            <DockPanel Margin="0,0,0,4">
+                <TextBlock Text="Level" Width="110" VerticalAlignment="Center"/>
+                <ComboBox x:Name="LevelBox"/>
+            </DockPanel>
+            <DockPanel Margin="0,0,0,10">
+                <TextBlock Text="Type" Width="110" VerticalAlignment="Center"/>
+                <ComboBox x:Name="TypeBox"/>
+            </DockPanel>
+
+            <TextBlock Text="Tool" FontWeight="SemiBold" Margin="0,0,0,4"/>
+            <RadioButton x:Name="ModePad" Content="New pad" IsChecked="True" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeLines" Content="New from model lines" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeEdges" Content="New from edges" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModePoints" Content="Add points" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeAddLines" Content="Add lines" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeShape" Content="Shape by point" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeSmooth" Content="Smooth" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeMid" Content="Insert midpoint" Margin="0,1" Checked="ModeChanged"/>
+            <RadioButton x:Name="ModeSlope" Content="Slope path" Margin="0,1" Checked="ModeChanged"/>
+
+            <TextBlock x:Name="Hint" TextWrapping="Wrap" Margin="0,8,0,8" Foreground="#37474F"/>
+
+            <StackPanel x:Name="ElevationPanel">
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock Text="Elevation" Width="110" VerticalAlignment="Center"/>
+                    <TextBox x:Name="ElevationBox"/>
+                </DockPanel>
+                <CheckBox x:Name="OffsetBox" Content="Offset from the current surface" Margin="110,0,0,4" Visibility="Collapsed"/>
+            </StackPanel>
+
+            <StackPanel x:Name="ShapePanel" Visibility="Collapsed">
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock Text="Radius" Width="110" VerticalAlignment="Center"/>
+                    <TextBox x:Name="RadiusBox"/>
+                </DockPanel>
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock Text="Rings" Width="110" VerticalAlignment="Center"/>
+                    <TextBox x:Name="RingsBox" Text="5"/>
+                </DockPanel>
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock Text="Height per click" Width="110" VerticalAlignment="Center"/>
+                    <TextBox x:Name="GainBox"/>
+                </DockPanel>
+                <StackPanel Orientation="Horizontal" Margin="110,0,0,4">
+                    <RadioButton x:Name="ShapeRaise" Content="Raise" IsChecked="True" Margin="0,0,12,0" Checked="ShapeChanged"/>
+                    <RadioButton x:Name="ShapeLower" Content="Lower" Margin="0,0,12,0" Checked="ShapeChanged"/>
+                    <RadioButton x:Name="ShapeSmooth" Content="Smooth out" Checked="ShapeChanged"/>
+                </StackPanel>
+            </StackPanel>
+
+            <StackPanel x:Name="SmoothPanel" Visibility="Collapsed">
+                <DockPanel Margin="0,0,0,4">
+                    <TextBlock Text="Passes (1-4)" Width="110" VerticalAlignment="Center"/>
+                    <TextBox x:Name="PassesBox" Text="2"/>
+                </DockPanel>
+            </StackPanel>
+
+            <StackPanel x:Name="SlopePanel" Visibility="Collapsed">
+                <RadioButton x:Name="SlopeElevation" Content="End elevation" IsChecked="True" Margin="0,1" Checked="SlopeChanged"/>
+                <TextBox x:Name="SlopeEndBox" Margin="18,2,0,4"/>
+                <RadioButton x:Name="SlopeAngle" Content="Slope angle (degrees, negative goes down)" Margin="0,1" Checked="SlopeChanged"/>
+                <TextBox x:Name="SlopeDegreesBox" Text="-15" Margin="18,2,0,4"/>
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</Window>
