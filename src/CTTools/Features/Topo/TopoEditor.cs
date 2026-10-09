@@ -12,330 +12,350 @@ public static class TopoEditor
 {
     private const double PointGap = 0.15; // feet, about 45 mm
 
-    public static void Run(UIApplication app, TopoRequest request)
-    {
-        var uidoc = app.ActiveUIDocument;
-        var doc = uidoc?.Document;
-        if (uidoc is null || doc is null)
+    public static void Transact(Document doc, string name, Action work) =>
+        InTransaction(doc, name, () =>
         {
-            request.Result = "Open a project first.";
-            return;
+            work();
+            return 0;
+        });
+
+    public static int Sculpt(Toposolid topo, double x, double y, double outerRing, int rings, double gain, ShapeAction action)
+    {
+        var probe = TopoProbe.Build(topo);
+        if (probe is null || outerRing <= PointGap)
+            return 0;
+
+        var samples = new List<(double X, double Y, double Z, double W)>();
+        foreach (var spot in Brush(x, y, outerRing, Math.Clamp(rings, 1, 12)))
+        {
+            if (probe.TryVertical(spot.X, spot.Y, out var z))
+                samples.Add((spot.X, spot.Y, z, spot.W));
         }
 
-        switch (request.Mode)
+        if (samples.Count == 0)
+            return 0;
+
+        var average = samples.Average(p => p.Z);
+        var targets = new List<(double X, double Y, double Z)>();
+        foreach (var spot in samples.OrderByDescending(p => p.W))
         {
-            case TopoMode.NewPad:
-                CreatePad(uidoc, request);
-                break;
-            case TopoMode.NewFromLines:
-                CreateFromCurves(uidoc, request, edges: false);
-                break;
-            case TopoMode.FromEdges:
-                CreateFromCurves(uidoc, request, edges: true);
-                break;
-            case TopoMode.AddPoints:
-                AddPoints(uidoc, request);
-                break;
-            case TopoMode.AddLines:
-                StampLines(uidoc, request);
-                break;
-            case TopoMode.ShapeByPoint:
-                ShapeByPoint(uidoc, request);
-                break;
-            case TopoMode.Smooth:
-                Smooth(uidoc, request);
-                break;
-            case TopoMode.InsertMidpoint:
-                InsertMidpoints(uidoc, request);
-                break;
-            case TopoMode.SlopePath:
-                SlopePaths(uidoc, request);
-                break;
+            if (targets.Any(kept => FlatDistance(new XYZ(kept.X, kept.Y, 0), spot.X, spot.Y) < PointGap))
+                continue;
+            var z = action switch
+            {
+                ShapeAction.Lower => spot.Z - gain * spot.W,
+                ShapeAction.SmoothOut => spot.Z + (average - spot.Z) * spot.W,
+                _ => spot.Z + gain * spot.W,
+            };
+            targets.Add((spot.X, spot.Y, z));
+        }
+
+        return Place(topo, targets, probe);
+    }
+
+    public static int SmoothSurface(Toposolid topo, int passes) => SmoothOnce(topo, Math.Clamp(passes, 1, 4));
+
+    public static void Inflate(Toposolid topo, double percent, double cell)
+    {
+        if (Math.Abs(percent) < 0.05)
+            return;
+        StampGrid(topo, cell, 0);
+        var editor = Open(topo);
+        var verts = Vertices(editor);
+        if (verts.Count == 0)
+            return;
+
+        var minX = verts.Min(v => v.Position.X);
+        var maxX = verts.Max(v => v.Position.X);
+        var minY = verts.Min(v => v.Position.Y);
+        var maxY = verts.Max(v => v.Position.Y);
+        var rx = Math.Max((maxX - minX) / 2, 1);
+        var ry = Math.Max((maxY - minY) / 2, 1);
+        var cx = (minX + maxX) / 2;
+        var cy = (minY + maxY) / 2;
+        var amplitude = 0.15 * Math.Min(maxX - minX, maxY - minY) * (percent / 50.0);
+        var basis = BaseElevation(topo);
+        foreach (var vertex in verts)
+        {
+            if (vertex.VertexType == SlabShapeVertexType.Corner)
+                continue;
+            var nx = (vertex.Position.X - cx) / rx;
+            var ny = (vertex.Position.Y - cy) / ry;
+            var distance = Math.Sqrt(nx * nx + ny * ny);
+            if (distance >= 1)
+                continue;
+            var dome = Math.Cos(distance * Math.PI / 2);
+            editor.ModifySubElement(vertex, vertex.Position.Z + amplitude * dome - basis);
         }
     }
 
-    private static void CreatePad(UIDocument uidoc, TopoRequest request)
+    public static void StampGrid(Toposolid topo, double cell, double rotationDegrees)
     {
-        var doc = uidoc.Document;
-        var p1 = uidoc.Selection.PickPoint("Pick the first corner of the pad. Use a plan view.");
-        var p2 = uidoc.Selection.PickPoint("Pick the opposite corner.");
-        if (Math.Abs(p2.X - p1.X) < 1 || Math.Abs(p2.Y - p1.Y) < 1)
-        {
-            request.Result = "The pad is too small. Pick two corners farther apart.";
+        var probe = TopoProbe.Build(topo);
+        if (probe is null)
             return;
+        if (cell < 1)
+            cell = 1;
+        var angle = rotationDegrees * Math.PI / 180;
+        var cosine = Math.Cos(angle);
+        var sine = Math.Sin(angle);
+        var cx = (probe.MinX + probe.MaxX) / 2;
+        var cy = (probe.MinY + probe.MaxY) / 2;
+        var reach = Math.Sqrt(Math.Pow(probe.MaxX - probe.MinX, 2) + Math.Pow(probe.MaxY - probe.MinY, 2));
+        var count = Math.Min(30, (int)Math.Ceiling(reach / cell));
+        var spots = new List<(double X, double Y, double Z)>();
+        for (var i = -count; i <= count; i++)
+        {
+            for (var j = -count; j <= count; j++)
+            {
+                var localX = i * cell;
+                var localY = j * cell;
+                var x = cx + localX * cosine - localY * sine;
+                var y = cy + localX * sine + localY * cosine;
+                if (!probe.TryVertical(x, y, out var z))
+                    continue;
+                spots.Add((x, y, z));
+            }
         }
 
-        double z = request.Elevation;
+        Place(topo, spots, probe);
+    }
+
+    public static int PlaceAbsolute(Toposolid topo, double x, double y, double z) =>
+        Place(topo, new[] { (x, y, z) });
+
+    public static int PlaceRelative(Toposolid topo, double x, double y, double offset)
+    {
+        if (!TryElevationAt(topo, x, y, out var z))
+            return 0;
+        return Place(topo, new[] { (x, y, z + offset) });
+    }
+
+    public static int InsertMidpoint(Toposolid topo, XYZ a, XYZ b)
+    {
+        var x = (a.X + b.X) / 2;
+        var y = (a.Y + b.Y) / 2;
+        var z = (a.Z + b.Z) / 2;
+        return Place(topo, new[] { (x, y, z) });
+    }
+
+    public static void SlopeBetween(Toposolid topo, XYZ a, XYZ b, double endZ)
+    {
+        var run = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y));
+        if (run < PointGap)
+            return;
+        var spacing = Math.Max(run / 24, 0.5);
+        var count = Math.Max(2, (int)Math.Ceiling(run / spacing));
+        var spots = new List<(double X, double Y, double Z)>();
+        for (var i = 0; i <= count; i++)
+        {
+            var t = i / (double)count;
+            spots.Add((a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t, a.Z + t * (endZ - a.Z)));
+        }
+
+        var editor = Open(topo);
+        var basis = BaseElevation(topo);
+        foreach (var vertex in Vertices(editor))
+        {
+            if (!ProjectsOnto(a, b, vertex.Position, out var t, out var distance) || distance > spacing * 0.75)
+                continue;
+            editor.ModifySubElement(vertex, a.Z + t * (endZ - a.Z) - basis);
+        }
+
+        Place(topo, spots);
+    }
+
+    public static int SplitLine(Toposolid topo, XYZ a, XYZ b)
+    {
+        Place(topo, new[] { (a.X, a.Y, a.Z), (b.X, b.Y, b.Z) });
+        var editor = Open(topo);
+        SlabShapeVertex? start = null;
+        SlabShapeVertex? end = null;
+        var startDistance = double.MaxValue;
+        var endDistance = double.MaxValue;
+        foreach (var vertex in Vertices(editor))
+        {
+            var fromStart = FlatDistance(vertex.Position, a.X, a.Y);
+            var fromEnd = FlatDistance(vertex.Position, b.X, b.Y);
+            if (fromStart < startDistance)
+            {
+                startDistance = fromStart;
+                start = vertex;
+            }
+
+            if (fromEnd < endDistance)
+            {
+                endDistance = fromEnd;
+                end = vertex;
+            }
+        }
+
+        if (start is null || end is null || startDistance > 2 || endDistance > 2)
+            return 0;
+        editor.AddSplitLine(start, end);
+        return 1;
+    }
+
+    public static int NudgeNearest(Toposolid topo, double x, double y, double delta, double reach)
+    {
+        var editor = Open(topo);
+        var basis = BaseElevation(topo);
+        SlabShapeVertex? nearest = null;
+        var best = reach;
+        foreach (var vertex in Vertices(editor))
+        {
+            var distance = FlatDistance(vertex.Position, x, y);
+            if (distance < best)
+            {
+                best = distance;
+                nearest = vertex;
+            }
+        }
+
+        if (nearest is null)
+            return PlaceRelative(topo, x, y, delta);
+        editor.ModifySubElement(nearest, nearest.Position.Z + delta - basis);
+        return 1;
+    }
+
+    public static Toposolid CreatePad(Document doc, double x1, double y1, double x2, double y2, double z, ElementId typeId, ElementId levelId)
+    {
         var points = new List<XYZ>
         {
-            new(p1.X, p1.Y, z),
-            new(p2.X, p1.Y, z),
-            new(p2.X, p2.Y, z),
-            new(p1.X, p2.Y, z),
+            new(x1, y1, z),
+            new(x2, y1, z),
+            new(x2, y2, z),
+            new(x1, y2, z),
         };
-        var topo = CreateSurface(doc, points, request, "Create topography pad");
-        uidoc.Selection.SetElementIds(new List<ElementId> { topo.Id });
-        request.Result = "Created a flat pad. Use Shape by point to sculpt it.";
+        return CreateSurface(doc, points, typeId, levelId, "Create topography pad");
     }
 
-    private static void CreateFromCurves(UIDocument uidoc, TopoRequest request, bool edges)
+    public static Toposolid CreateFromElements(Document doc, IEnumerable<Element> elements, bool edges, ElementId typeId, ElementId levelId)
     {
-        var doc = uidoc.Document;
-        IList<Reference> refs = edges
-            ? uidoc.Selection.PickObjects(ObjectType.Element, new EdgeSourceFilter(),
-                "Select walls, floors, roofs, or model lines. Click Finish on the ribbon.")
-            : uidoc.Selection.PickObjects(ObjectType.Element, new ModelCurveFilter(),
-                "Select model lines drawn at the contour elevation. Detail lines are ignored. Click Finish.");
-
         var points = new List<XYZ>();
-        foreach (var reference in refs)
+        foreach (var element in elements)
         {
-            var element = doc.GetElement(reference);
             foreach (var curve in edges ? TopEdges(element) : ModelCurves(element))
                 points.AddRange(Sample(curve));
         }
 
         points = Dedupe(points);
         if (points.Count < 3)
-        {
-            request.Result = edges
-                ? "Need at least 3 points. Pick elements that have a top edge."
-                : "Need at least 3 points. Pick model lines, not detail lines.";
-            return;
-        }
-
-        var topo = CreateSurface(doc, points, request, edges ? "Topography from edges" : "Topography from lines");
-        uidoc.Selection.SetElementIds(new List<ElementId> { topo.Id });
-        request.Result = $"Created a surface from {points.Count} points.";
+            throw new InvalidOperationException(edges
+                ? "Need at least 3 points. Pick walls, floors, roofs, or model lines."
+                : "Need at least 3 points. Pick model lines, not detail lines.");
+        return CreateSurface(doc, points, typeId, levelId, edges ? "Topography from edges" : "Topography from lines");
     }
 
-    private static void AddPoints(UIDocument uidoc, TopoRequest request)
+    public static int StampCurves(Toposolid topo, IEnumerable<Element> elements, bool edges)
     {
-        var doc = uidoc.Document;
-        var topo = PickTopo(uidoc, "Pick the surface, then click where each point goes. Press Esc when finished.");
-        var placed = 0;
-        while (true)
-        {
-            Reference hit;
-            try
-            {
-                hit = uidoc.Selection.PickObject(ObjectType.PointOnElement, new TopoFilter(),
-                    "Click inside the surface to place a point. Press Esc when finished.");
-            }
-            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
-            {
-                break;
-            }
-
-            if (hit.ElementId != topo.Id)
-                continue;
-
-            var click = hit.GlobalPoint;
-            if (!TryElevationAt(topo, click.X, click.Y, out var surfaceZ))
-                surfaceZ = click.Z;
-            var z = request.ElevationIsOffset ? surfaceZ + request.Elevation : request.Elevation;
-            placed += InTransaction(doc, "Add topography point", () =>
-                Place(topo, new[] { (click.X, click.Y, z) }));
-        }
-
-        request.Result = placed == 0 ? "No points added." : $"Added {placed} point(s).";
-    }
-
-    private static void StampLines(UIDocument uidoc, TopoRequest request)
-    {
-        var doc = uidoc.Document;
-        var topo = PickTopo(uidoc, "Pick the surface that will receive the lines.");
-        var refs = uidoc.Selection.PickObjects(ObjectType.Element, new ModelCurveFilter(),
-            "Select model lines to stamp onto the surface. Click Finish.");
         var spots = new List<(double X, double Y, double Z)>();
-        foreach (var reference in refs)
+        foreach (var element in elements)
         {
-            foreach (var curve in ModelCurves(doc.GetElement(reference)))
+            foreach (var curve in edges ? TopEdges(element) : ModelCurves(element))
             {
                 foreach (var point in Sample(curve))
-                {
-                    if (TryElevationAt(topo, point.X, point.Y, out _))
-                        spots.Add((point.X, point.Y, point.Z));
-                }
+                    spots.Add((point.X, point.Y, point.Z));
             }
         }
 
-        var placed = InTransaction(doc, "Add lines to topography", () => Place(topo, spots));
-        request.Result = $"Stamped {placed} point(s) onto the surface. Lines outside the boundary were skipped.";
+        return Place(topo, spots);
     }
 
-    private static void ShapeByPoint(UIDocument uidoc, TopoRequest request)
+    public static List<(double X, double Y, double Z)> Capture(Toposolid topo)
     {
-        var doc = uidoc.Document;
-        var topo = PickTopo(uidoc, "Pick the surface to sculpt.");
-        if (request.Radius <= PointGap)
+        var editor = topo.GetSlabShapeEditor();
+        if (!editor.IsEnabled)
+            return new List<(double X, double Y, double Z)>();
+        var points = new List<(double X, double Y, double Z)>();
+        foreach (var vertex in Vertices(editor))
+            points.Add((vertex.Position.X, vertex.Position.Y, vertex.Position.Z));
+        return points;
+    }
+
+    public static void Restore(Toposolid topo, IReadOnlyList<(double X, double Y, double Z)> snap)
+    {
+        var editor = topo.GetSlabShapeEditor();
+        if (snap.Count == 0)
         {
-            request.Result = "Radius is too small.";
+            if (editor.IsEnabled)
+                editor.ResetSlabShape();
             return;
         }
 
-        var clicks = 0;
-        var moved = 0;
-        while (true)
+        if (!editor.IsEnabled)
+            editor.Enable();
+        var current = Vertices(editor);
+        var basis = BaseElevation(topo);
+        var matched = new bool[current.Count];
+        foreach (var point in snap)
         {
-            Reference hit;
-            try
+            var found = -1;
+            var best = PointGap;
+            for (var i = 0; i < current.Count; i++)
             {
-                hit = uidoc.Selection.PickObject(ObjectType.PointOnElement, new TopoFilter(),
-                    "Click the surface to sculpt. Press Esc when finished.");
-            }
-            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
-            {
-                break;
-            }
-
-            if (hit.ElementId != topo.Id)
-                continue;
-
-            var click = hit.GlobalPoint;
-            var samples = new List<(double X, double Y, double Z, double W)>();
-            foreach (var spot in Brush(click.X, click.Y, request.Radius, request.Rings))
-            {
-                if (TryElevationAt(topo, spot.X, spot.Y, out var z))
-                    samples.Add((spot.X, spot.Y, z, spot.W));
-            }
-
-            if (samples.Count == 0)
-                continue;
-
-            var average = samples.Average(p => p.Z);
-            var targets = new List<(double X, double Y, double Z)>();
-            foreach (var spot in samples.OrderByDescending(p => p.W))
-            {
-                if (targets.Any(kept => FlatDistance(new XYZ(kept.X, kept.Y, 0), spot.X, spot.Y) < PointGap))
+                if (matched[i])
                     continue;
-                var z = request.Shape switch
+                var distance = FlatDistance(current[i].Position, point.X, point.Y);
+                if (distance <= best)
                 {
-                    ShapeAction.Lower => spot.Z - request.Gain * spot.W,
-                    ShapeAction.SmoothOut => spot.Z + (average - spot.Z) * spot.W,
-                    _ => spot.Z + request.Gain * spot.W,
-                };
-                targets.Add((spot.X, spot.Y, z));
-            }
-
-            moved += InTransaction(doc, "Shape topography", () => Place(topo, targets));
-            clicks++;
-        }
-
-        request.Result = clicks == 0
-            ? "No sculpt applied."
-            : $"Sculpted {clicks} click(s), {moved} point(s). Ctrl+Z undoes one click.";
-    }
-
-    private static void Smooth(UIDocument uidoc, TopoRequest request)
-    {
-        var doc = uidoc.Document;
-        var topo = PickTopo(uidoc, "Pick the surface to smooth.");
-        var changed = InTransaction(doc, "Smooth topography", () => SmoothOnce(topo, request.SmoothPasses));
-        request.Result = changed == 0
-            ? "No interior points to smooth. Sculpt or add points first."
-            : $"Smoothed {changed} point(s) over {request.SmoothPasses} pass(es).";
-    }
-
-    private static void InsertMidpoints(UIDocument uidoc, TopoRequest request)
-    {
-        var doc = uidoc.Document;
-        var topo = PickTopo(uidoc, "Pick the surface.");
-        var added = 0;
-        while (true)
-        {
-            Reference a;
-            Reference b;
-            try
-            {
-                a = uidoc.Selection.PickObject(ObjectType.PointOnElement, new TopoFilter(), "Pick the first point. Esc to stop.");
-                b = uidoc.Selection.PickObject(ObjectType.PointOnElement, new TopoFilter(), "Pick the second point.");
-            }
-            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
-            {
-                break;
-            }
-
-            if (a.ElementId != topo.Id || b.ElementId != topo.Id)
-                continue;
-
-            var midX = (a.GlobalPoint.X + b.GlobalPoint.X) / 2;
-            var midY = (a.GlobalPoint.Y + b.GlobalPoint.Y) / 2;
-            var midZ = (a.GlobalPoint.Z + b.GlobalPoint.Z) / 2;
-            added += InTransaction(doc, "Insert topography midpoint", () => Place(topo, new[] { (midX, midY, midZ) }));
-        }
-
-        request.Result = added == 0 ? "No midpoint added." : $"Inserted {added} midpoint(s).";
-    }
-
-    private static void SlopePaths(UIDocument uidoc, TopoRequest request)
-    {
-        var doc = uidoc.Document;
-        var topo = PickTopo(uidoc, "Pick the surface.");
-        var paths = 0;
-        while (true)
-        {
-            Reference start;
-            Reference end;
-            try
-            {
-                start = uidoc.Selection.PickObject(ObjectType.PointOnElement, new TopoFilter(),
-                    "Pick the start of the slope. Esc to stop.");
-                end = uidoc.Selection.PickObject(ObjectType.PointOnElement, new TopoFilter(), "Pick the end of the slope.");
-            }
-            catch (Autodesk.Revit.Exceptions.OperationCanceledException)
-            {
-                break;
-            }
-
-            if (start.ElementId != topo.Id || end.ElementId != topo.Id)
-                continue;
-
-            var a = start.GlobalPoint;
-            var b = end.GlobalPoint;
-            var run = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y));
-            if (run < PointGap)
-                continue;
-
-            var endZ = request.SlopeByAngle
-                ? a.Z + run * Math.Tan(request.SlopeDegrees * Math.PI / 180)
-                : request.SlopeEndElevation;
-
-            var spacing = Math.Max(run / 20, 0.5);
-            var spots = new List<(double X, double Y, double Z)>();
-            var count = Math.Max(2, (int)Math.Ceiling(run / spacing));
-            for (var i = 0; i <= count; i++)
-            {
-                var t = i / (double)count;
-                var z = a.Z + t * (endZ - a.Z);
-                spots.Add((a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t, z));
-            }
-
-            InTransaction(doc, "Slope topography", () =>
-            {
-                var editor = Open(topo);
-                var verts = Vertices(editor);
-                var basis = BaseElevation(topo);
-                foreach (var vertex in verts)
-                {
-                    if (!ProjectsOnto(a, b, vertex.Position, out var t, out var distance))
-                        continue;
-                    if (distance > spacing * 0.75)
-                        continue;
-                    var z = a.Z + t * (endZ - a.Z);
-                    editor.ModifySubElement(vertex, z - basis);
+                    best = distance;
+                    found = i;
                 }
+            }
 
-                Place(topo, spots);
-                return 0;
-            });
-            paths++;
+            if (found >= 0)
+            {
+                matched[found] = true;
+                editor.ModifySubElement(current[found], point.Z - basis);
+                continue;
+            }
+
+            try
+            {
+                var added = editor.AddPoint(new XYZ(point.X, point.Y, point.Z));
+                editor.ModifySubElement(added, point.Z - basis);
+            }
+            catch (Autodesk.Revit.Exceptions.ArgumentException)
+            {
+            }
         }
 
-        request.Result = paths == 0 ? "No slope applied." : $"Applied {paths} slope path(s).";
+        for (var i = current.Count - 1; i >= 0; i--)
+        {
+            if (matched[i] || current[i].VertexType == SlabShapeVertexType.Corner)
+                continue;
+            try
+            {
+                editor.DeletePoint(current[i]);
+            }
+            catch (Autodesk.Revit.Exceptions.ArgumentException)
+            {
+            }
+        }
+
+        topo.Document.Regenerate();
     }
 
-    private static Toposolid CreateSurface(Document doc, IList<XYZ> points, TopoRequest request, string name)
+    public static void Prepare(Toposolid topo)
+    {
+        var editor = topo.GetSlabShapeEditor();
+        if (!editor.IsEnabled)
+            editor.Enable();
+    }
+
+    public static Toposolid PickSurface(UIDocument uidoc) =>
+        PickTopo(uidoc, "Pick the topography to edit.");
+
+    public static IList<Reference> PickLines(UIDocument uidoc) =>
+        uidoc.Selection.PickObjects(ObjectType.Element, new ModelCurveFilter(),
+            "Select model lines. Click Finish.");
+
+    public static IList<Reference> PickEdgeSources(UIDocument uidoc) =>
+        uidoc.Selection.PickObjects(ObjectType.Element, new EdgeSourceFilter(),
+            "Select walls, floors, roofs, or model lines. Click Finish.");
+
+    private static Toposolid CreateSurface(Document doc, IList<XYZ> points, ElementId typeId, ElementId levelId, string name)
     {
         Toposolid? created = null;
         InTransaction(doc, name, () =>
@@ -343,13 +363,13 @@ public static class TopoEditor
             var unique = Dedupe(points);
             try
             {
-                created = Toposolid.Create(doc, unique, request.TypeId, request.LevelId);
+                created = Toposolid.Create(doc, unique, typeId, levelId);
             }
             catch (Autodesk.Revit.Exceptions.ArgumentException)
             {
-                var level = (Level)doc.GetElement(request.LevelId);
+                var level = (Level)doc.GetElement(levelId);
                 var loop = BoxLoop(unique, 2, level.Elevation);
-                created = Toposolid.Create(doc, new List<CurveLoop> { loop }, unique, request.TypeId, request.LevelId);
+                created = Toposolid.Create(doc, new List<CurveLoop> { loop }, unique, typeId, levelId);
             }
 
             return 0;
@@ -357,7 +377,7 @@ public static class TopoEditor
         return created ?? throw new InvalidOperationException("Revit could not create the surface.");
     }
 
-    private static int Place(Toposolid topo, IEnumerable<(double X, double Y, double Z)> spots)
+    internal static int Place(Toposolid topo, IEnumerable<(double X, double Y, double Z)> spots, TopoProbe? probe = null)
     {
         var editor = Open(topo);
         var existing = Vertices(editor);
@@ -373,7 +393,10 @@ public static class TopoEditor
                 continue;
             }
 
-            if (!TryElevationAt(topo, spot.X, spot.Y, out _))
+            var inside = probe is not null
+                ? probe.TryVertical(spot.X, spot.Y, out _)
+                : TryElevationAt(topo, spot.X, spot.Y, out _);
+            if (!inside)
                 continue;
 
             try
@@ -443,7 +466,7 @@ public static class TopoEditor
     private static (long X, long Y) Key(XYZ point) =>
         ((long)Math.Round(point.X * 10000), (long)Math.Round(point.Y * 10000));
 
-    private static SlabShapeEditor Open(Toposolid topo)
+    internal static SlabShapeEditor Open(Toposolid topo)
     {
         var editor = topo.GetSlabShapeEditor();
         if (!editor.IsEnabled)
@@ -451,7 +474,7 @@ public static class TopoEditor
         return editor;
     }
 
-    private static List<SlabShapeVertex> Vertices(SlabShapeEditor editor)
+    internal static List<SlabShapeVertex> Vertices(SlabShapeEditor editor)
     {
         var list = new List<SlabShapeVertex>();
         foreach (SlabShapeVertex vertex in editor.SlabShapeVertices)
@@ -459,7 +482,7 @@ public static class TopoEditor
         return list;
     }
 
-    private static double BaseElevation(Toposolid topo)
+    internal static double BaseElevation(Toposolid topo)
     {
         var level = (Level)topo.Document.GetElement(topo.LevelId);
         var offset = topo.get_Parameter(BuiltInParameter.TOPOSOLID_HEIGHTABOVELEVEL_PARAM)?.AsDouble() ?? 0;

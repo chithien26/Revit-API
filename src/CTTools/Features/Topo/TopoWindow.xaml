@@ -1,83 +1,165 @@
 <Window x:Class="CTTools.Features.Topo.TopoWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="CTTools Topo"
-        Width="420"
+        Title="Topo"
+        Width="392"
         SizeToContent="Height"
-        ResizeMode="NoResize"
+        MaxHeight="760"
         WindowStyle="ToolWindow"
         ShowInTaskbar="False"
-        WindowStartupLocation="CenterScreen">
-    <DockPanel Margin="12">
-        <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
-            <TextBlock x:Name="Status" TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#455A64"/>
-            <Button x:Name="RunButton" Content="Run" Height="32" IsDefault="True" Click="RunClick"/>
-        </StackPanel>
-        <StackPanel>
-            <TextBlock Text="New surfaces use this level and type." Foreground="#607D8B" Margin="0,0,0,6"/>
-            <DockPanel Margin="0,0,0,4">
-                <TextBlock Text="Level" Width="110" VerticalAlignment="Center"/>
-                <ComboBox x:Name="LevelBox"/>
-            </DockPanel>
-            <DockPanel Margin="0,0,0,10">
-                <TextBlock Text="Type" Width="110" VerticalAlignment="Center"/>
-                <ComboBox x:Name="TypeBox"/>
-            </DockPanel>
-
-            <TextBlock Text="Tool" FontWeight="SemiBold" Margin="0,0,0,4"/>
-            <RadioButton x:Name="ModePad" Content="New pad" IsChecked="True" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeLines" Content="New from model lines" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeEdges" Content="New from edges" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModePoints" Content="Add points" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeAddLines" Content="Add lines" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeShape" Content="Shape by point" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeSmooth" Content="Smooth" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeMid" Content="Insert midpoint" Margin="0,1" Checked="ModeChanged"/>
-            <RadioButton x:Name="ModeSlope" Content="Slope path" Margin="0,1" Checked="ModeChanged"/>
-
-            <TextBlock x:Name="Hint" TextWrapping="Wrap" Margin="0,8,0,8" Foreground="#37474F"/>
-
-            <StackPanel x:Name="ElevationPanel">
-                <DockPanel Margin="0,0,0,4">
-                    <TextBlock Text="Elevation" Width="110" VerticalAlignment="Center"/>
-                    <TextBox x:Name="ElevationBox"/>
-                </DockPanel>
-                <CheckBox x:Name="OffsetBox" Content="Offset from the current surface" Margin="110,0,0,4" Visibility="Collapsed"/>
+        ResizeMode="NoResize"
+        Background="#ECEFF1">
+    <Window.Resources>
+        <Style x:Key="ToolButton" TargetType="RadioButton">
+            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Padding" Value="6,7"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="#263238"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="White" BorderBrush="#B0BEC5" BorderThickness="1" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1565C0"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1565C0"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1565C0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PageButton" TargetType="RadioButton" BasedOn="{StaticResource ToolButton}">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Resources>
+    <DockPanel Margin="10">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+            <Button x:Name="PickButton" DockPanel.Dock="Right" Content="Pick" Width="64" Margin="8,0,0,0" Click="PickClick"/>
+            <StackPanel>
+                <TextBlock Text="SURFACE" FontSize="10" Foreground="#607D8B"/>
+                <TextBlock x:Name="SurfaceName" Text="None yet" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
+        </DockPanel>
 
-            <StackPanel x:Name="ShapePanel" Visibility="Collapsed">
-                <DockPanel Margin="0,0,0,4">
-                    <TextBlock Text="Radius" Width="110" VerticalAlignment="Center"/>
-                    <TextBox x:Name="RadiusBox"/>
-                </DockPanel>
-                <DockPanel Margin="0,0,0,4">
-                    <TextBlock Text="Rings" Width="110" VerticalAlignment="Center"/>
-                    <TextBox x:Name="RingsBox" Text="5"/>
-                </DockPanel>
-                <DockPanel Margin="0,0,0,4">
-                    <TextBlock Text="Height per click" Width="110" VerticalAlignment="Center"/>
-                    <TextBox x:Name="GainBox"/>
-                </DockPanel>
-                <StackPanel Orientation="Horizontal" Margin="110,0,0,4">
-                    <RadioButton x:Name="ShapeRaise" Content="Raise" IsChecked="True" Margin="0,0,12,0" Checked="ShapeChanged"/>
-                    <RadioButton x:Name="ShapeLower" Content="Lower" Margin="0,0,12,0" Checked="ShapeChanged"/>
-                    <RadioButton x:Name="ShapeSmooth" Content="Smooth out" Checked="ShapeChanged"/>
+        <UniformGrid DockPanel.Dock="Top" Columns="3" Margin="0,0,0,8">
+            <RadioButton x:Name="PageModify" Style="{StaticResource PageButton}" Content="Modify" GroupName="Page" IsChecked="True" Checked="PageChanged"/>
+            <RadioButton x:Name="PagePoints" Style="{StaticResource PageButton}" Content="Points" GroupName="Page" Checked="PageChanged"/>
+            <RadioButton x:Name="PageCreate" Style="{StaticResource PageButton}" Content="Create" GroupName="Page" Checked="PageChanged"/>
+        </UniformGrid>
+
+        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button Content="Undo" Margin="0,0,4,0" Height="30" Click="UndoClick"/>
+            <Button Grid.Column="1" Content="Revert" Margin="4,0,0,0" Height="30" Click="RevertClick"/>
+        </Grid>
+        <TextBlock x:Name="Status" DockPanel.Dock="Bottom" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="#37474F"
+                   Text="Pick a surface, then click it. The blue rings are the area each click changes."/>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <UniformGrid x:Name="ModifyTools" Columns="2">
+                    <RadioButton x:Name="ToolShape" Style="{StaticResource ToolButton}" Content="Shape by point" GroupName="ModifyTool" IsChecked="True" Checked="ToolChanged"/>
+                    <RadioButton x:Name="ToolSmooth" Style="{StaticResource ToolButton}" Content="Smooth" GroupName="ModifyTool" Checked="ToolChanged"/>
+                    <RadioButton x:Name="ToolInflate" Style="{StaticResource ToolButton}" Content="Inflate" GroupName="ModifyTool" Checked="ToolChanged"/>
+                    <RadioButton x:Name="ToolMesh" Style="{StaticResource ToolButton}" Content="Mesh" GroupName="ModifyTool" Checked="ToolChanged"/>
+                </UniformGrid>
+                <UniformGrid x:Name="PointTools" Columns="2" Visibility="Collapsed">
+                    <RadioButton x:Name="ToolPoint" Style="{StaticResource ToolButton}" Content="Place point" GroupName="PointTool" IsChecked="True" Checked="ToolChanged"/>
+                    <RadioButton x:Name="ToolMid" Style="{StaticResource ToolButton}" Content="Midpoint" GroupName="PointTool" Checked="ToolChanged"/>
+                    <RadioButton x:Name="ToolSlope" Style="{StaticResource ToolButton}" Content="Slope path" GroupName="PointTool" Checked="ToolChanged"/>
+                    <RadioButton x:Name="ToolSplit" Style="{StaticResource ToolButton}" Content="Split line" GroupName="PointTool" Checked="ToolChanged"/>
+                </UniformGrid>
+                <StackPanel x:Name="PointActions" Visibility="Collapsed" Margin="0,6,0,0">
+                    <Button Content="Add line from model lines" Margin="3,2" Padding="6" Click="AddLinesClick"/>
+                    <Button Content="From edge" Margin="3,2" Padding="6" Click="AddEdgesClick"/>
+                </StackPanel>
+
+                <TextBlock x:Name="Hint" TextWrapping="Wrap" Margin="4,8,4,6" Foreground="#455A64"/>
+
+                <StackPanel x:Name="ShapeOptions">
+                    <TextBlock Text="SHAPE SIZE" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <TextBox x:Name="SizeBox" Margin="3,0,3,6"/>
+                    <DockPanel Margin="4,0,4,2">
+                        <TextBlock Text="POINT DENSITY" FontSize="10" Foreground="#607D8B" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="DensityLabel" Text="5" HorizontalAlignment="Right" Foreground="#1565C0"/>
+                    </DockPanel>
+                    <Slider x:Name="DensitySlider" Minimum="1" Maximum="10" Value="5" IsSnapToTickEnabled="True" TickFrequency="1" Margin="3,0,3,6" ValueChanged="DensityChanged"/>
+                    <TextBlock Text="GAIN" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <TextBox x:Name="GainBox" Margin="3,0,3,6"/>
+                    <UniformGrid Columns="3" Margin="0,0,0,4">
+                        <RadioButton x:Name="ShapeRaise" Style="{StaticResource ToolButton}" Content="Raise" GroupName="Shape" IsChecked="True"/>
+                        <RadioButton x:Name="ShapeLower" Style="{StaticResource ToolButton}" Content="Lower" GroupName="Shape"/>
+                        <RadioButton x:Name="ShapeSmoothOut" Style="{StaticResource ToolButton}" Content="Smooth out" GroupName="Shape"/>
+                    </UniformGrid>
+                </StackPanel>
+
+                <StackPanel x:Name="SmoothOptions" Visibility="Collapsed">
+                    <DockPanel Margin="4,0,4,2">
+                        <TextBlock Text="SMOOTHING LEVEL" FontSize="10" Foreground="#607D8B"/>
+                        <TextBlock x:Name="PassLabel" Text="2" HorizontalAlignment="Right" Foreground="#1565C0"/>
+                    </DockPanel>
+                    <Slider x:Name="PassSlider" Minimum="1" Maximum="4" Value="2" IsSnapToTickEnabled="True" TickFrequency="1" Margin="3,0,3,6" ValueChanged="PassChanged"/>
+                </StackPanel>
+
+                <StackPanel x:Name="InflateOptions" Visibility="Collapsed">
+                    <DockPanel Margin="4,0,4,2">
+                        <TextBlock Text="INFLATION %" FontSize="10" Foreground="#607D8B"/>
+                        <TextBlock x:Name="InflateLabel" Text="0" HorizontalAlignment="Right" Foreground="#1565C0"/>
+                    </DockPanel>
+                    <Slider x:Name="InflateSlider" Minimum="-50" Maximum="50" Value="0" TickFrequency="5" Margin="3,0,3,6" ValueChanged="InflateChanged"/>
+                </StackPanel>
+
+                <StackPanel x:Name="EffectButtons" Orientation="Horizontal" Visibility="Collapsed" Margin="3,0,3,6">
+                    <Button Content="Preview" Width="120" Margin="0,0,8,0" Padding="6" Click="PreviewClick"/>
+                    <Button Content="Apply" Width="120" Padding="6" Click="ApplyClick"/>
+                </StackPanel>
+
+                <StackPanel x:Name="GridOptions" Visibility="Collapsed">
+                    <TextBlock Text="CELL SIZE" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <TextBox x:Name="CellBox" Margin="3,0,3,6"/>
+                    <DockPanel Margin="4,0,4,2">
+                        <TextBlock Text="GRID ROTATION" FontSize="10" Foreground="#607D8B"/>
+                        <TextBlock x:Name="RotationLabel" Text="0°" HorizontalAlignment="Right" Foreground="#1565C0"/>
+                    </DockPanel>
+                    <Slider x:Name="RotationSlider" Minimum="0" Maximum="180" Value="0" Margin="3,0,3,6" ValueChanged="RotationChanged"/>
+                </StackPanel>
+
+                <StackPanel x:Name="PointOptions" Visibility="Collapsed">
+                    <TextBlock Text="ELEVATION" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <TextBox x:Name="ElevationBox" Margin="3,0,3,4"/>
+                    <CheckBox x:Name="RelativeBox" Content="Relative to surface" Margin="4,0,0,6"/>
+                </StackPanel>
+
+                <StackPanel x:Name="SlopeOptions" Visibility="Collapsed">
+                    <RadioButton x:Name="SlopeByElevation" Content="End elevation" GroupName="Slope" IsChecked="True" Margin="4,2"/>
+                    <TextBox x:Name="SlopeEndBox" Margin="3,0,3,4"/>
+                    <RadioButton x:Name="SlopeByAngle" Content="Slope angle (degrees)" GroupName="Slope" Margin="4,2"/>
+                    <TextBox x:Name="SlopeDegreesBox" Text="-15" Margin="3,0,3,6"/>
+                </StackPanel>
+
+                <StackPanel x:Name="CreateOptions" Visibility="Collapsed">
+                    <TextBlock Text="Click two corners in a plan view." TextWrapping="Wrap" Margin="4,0,4,6" Foreground="#455A64"/>
+                    <TextBlock Text="LEVEL" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <ComboBox x:Name="LevelBox" Margin="3,0,3,6"/>
+                    <TextBlock Text="TYPE" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <ComboBox x:Name="TypeBox" Margin="3,0,3,6"/>
+                    <TextBlock Text="PAD ELEVATION" FontSize="10" Foreground="#607D8B" Margin="4,0,0,2"/>
+                    <TextBox x:Name="PadElevationBox" Margin="3,0,3,6"/>
+                    <Button Content="New from model lines" Margin="3,2" Padding="6" Click="CreateLinesClick"/>
+                    <Button Content="New from edges" Margin="3,2" Padding="6" Click="CreateEdgesClick"/>
                 </StackPanel>
             </StackPanel>
-
-            <StackPanel x:Name="SmoothPanel" Visibility="Collapsed">
-                <DockPanel Margin="0,0,0,4">
-                    <TextBlock Text="Passes (1-4)" Width="110" VerticalAlignment="Center"/>
-                    <TextBox x:Name="PassesBox" Text="2"/>
-                </DockPanel>
-            </StackPanel>
-
-            <StackPanel x:Name="SlopePanel" Visibility="Collapsed">
-                <RadioButton x:Name="SlopeElevation" Content="End elevation" IsChecked="True" Margin="0,1" Checked="SlopeChanged"/>
-                <TextBox x:Name="SlopeEndBox" Margin="18,2,0,4"/>
-                <RadioButton x:Name="SlopeAngle" Content="Slope angle (degrees, negative goes down)" Margin="0,1" Checked="SlopeChanged"/>
-                <TextBox x:Name="SlopeDegreesBox" Text="-15" Margin="18,2,0,4"/>
-            </StackPanel>
-        </StackPanel>
+        </ScrollViewer>
     </DockPanel>
 </Window>

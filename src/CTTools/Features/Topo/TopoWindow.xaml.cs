@@ -4,52 +4,125 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using WpfCombo = System.Windows.Controls.ComboBox;
 
 namespace CTTools.Features.Topo;
 
 public partial class TopoWindow : Window
 {
     private readonly UIApplication _uiApp;
-    private readonly ExternalEvent _event;
     private readonly TopoEventHandler _handler;
+    private readonly TopoSession _session;
     private Document? _loaded;
-    private bool _busy;
 
     public TopoWindow(UIApplication uiApp, ExternalEvent externalEvent, TopoEventHandler handler)
     {
         _uiApp = uiApp;
-        _event = externalEvent;
         _handler = handler;
         InitializeComponent();
+        _session = new TopoSession(uiApp, this, externalEvent, handler);
+        handler.Session = _session;
         new System.Windows.Interop.WindowInteropHelper(this).Owner = uiApp.MainWindowHandle;
-        Loaded += (_, _) => LoadDocument();
-    }
-
-    public bool IsBusy => _busy;
-
-    public void Finish(string message, bool error)
-    {
-        _busy = false;
-        RunButton.IsEnabled = true;
-        Status.Text = message;
-        Status.Foreground = error ? System.Windows.Media.Brushes.DarkRed : new SolidColorBrush(System.Windows.Media.Color.FromRgb(69, 90, 100));
-        if (IsLoaded)
-            Show();
-    }
-
-    protected override void OnActivated(EventArgs e)
-    {
-        base.OnActivated(e);
-        if (!_busy)
+        Loaded += (_, _) =>
+        {
             LoadDocument();
+            Left = SystemParameters.WorkArea.Right - ActualWidth - 18;
+            Top = SystemParameters.WorkArea.Top + 36;
+            _session.Start();
+            ShowTools();
+        };
+        Closed += (_, _) => _session.Stop();
     }
 
-    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    public bool ContainsScreenPoint(int x, int y)
     {
-        if (_busy)
-            e.Cancel = true;
-        base.OnClosing(e);
+        if (!IsVisible || ActualWidth <= 0 || ActualHeight <= 0)
+            return false;
+        var origin = PointToScreen(new System.Windows.Point(0, 0));
+        var far = PointToScreen(new System.Windows.Point(ActualWidth, ActualHeight));
+        return x >= Math.Min(origin.X, far.X) && x <= Math.Max(origin.X, far.X)
+            && y >= Math.Min(origin.Y, far.Y) && y <= Math.Max(origin.Y, far.Y);
+    }
+
+    public void SetSurface(string name) => SurfaceName.Text = name;
+
+    public void SetStatus(string message, bool error)
+    {
+        Status.Text = message;
+        Status.Foreground = error
+            ? System.Windows.Media.Brushes.DarkRed
+            : new SolidColorBrush(System.Windows.Media.Color.FromRgb(55, 71, 79));
+    }
+
+    public bool TryRead(out TopoSettings settings)
+    {
+        settings = new TopoSettings
+        {
+            Tool = TopoTool.Shape,
+            LevelId = ElementId.InvalidElementId,
+            TypeId = ElementId.InvalidElementId,
+        };
+        var doc = _uiApp.ActiveUIDocument?.Document;
+        if (doc is null)
+            return false;
+
+        var units = doc.GetUnits();
+        var tool = CurrentTool();
+        if (!TryLength(units, SizeBox.Text, out var size) || size <= 0)
+        {
+            if (tool == TopoTool.Shape)
+            {
+                SetStatus("Shape size is not a length. Example: 20000 or 20 m.", true);
+                return false;
+            }
+
+            size = UnitUtils.ConvertToInternalUnits(20, UnitTypeId.Meters);
+        }
+
+        if (!TryLength(units, GainBox.Text, out var gain))
+        {
+            if (tool is TopoTool.Shape or TopoTool.Mesh)
+            {
+                SetStatus("Gain is not a length. Example: 1000 or 1 m.", true);
+                return false;
+            }
+
+            gain = UnitUtils.ConvertToInternalUnits(1, UnitTypeId.Meters);
+        }
+
+        if (!TryLength(units, CellBox.Text, out var cell) || cell <= 0)
+            cell = UnitUtils.ConvertToInternalUnits(5, UnitTypeId.Meters);
+        var elevationBox = tool == TopoTool.Pad ? PadElevationBox.Text : ElevationBox.Text;
+        if (!TryLength(units, elevationBox, out var elevation))
+            elevation = 0;
+        if (!TryLength(units, SlopeEndBox.Text, out var slopeEnd))
+            slopeEnd = elevation;
+        if (!TryDegrees(SlopeDegreesBox.Text, out var degrees))
+            degrees = -15;
+        TryChoice(LevelBox, out var levelId);
+        TryChoice(TypeBox, out var typeId);
+
+        settings = new TopoSettings
+        {
+            Tool = tool,
+            Shape = ShapeLower.IsChecked == true ? ShapeAction.Lower
+                : ShapeSmoothOut.IsChecked == true ? ShapeAction.SmoothOut
+                : ShapeAction.Raise,
+            OuterRing = size,
+            Density = (int)Math.Round(DensitySlider.Value),
+            Gain = Math.Abs(gain),
+            SmoothPasses = (int)Math.Round(PassSlider.Value),
+            InflatePercent = InflateSlider.Value,
+            Cell = cell,
+            Rotation = RotationSlider.Value,
+            RelativePoint = RelativeBox.IsChecked == true,
+            Elevation = elevation,
+            SlopeByAngle = SlopeByAngle.IsChecked == true,
+            SlopeDegrees = degrees,
+            SlopeEnd = slopeEnd,
+            LevelId = levelId,
+            TypeId = typeId,
+        };
+        return true;
     }
 
     private void LoadDocument()
@@ -58,7 +131,6 @@ public partial class TopoWindow : Window
         if (doc is null || ReferenceEquals(doc, _loaded))
             return;
         _loaded = doc;
-
         var units = doc.GetUnits();
         var levels = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
             .OrderBy(level => level.Elevation)
@@ -68,180 +140,115 @@ public partial class TopoWindow : Window
             .OrderBy(type => type.Name)
             .Select(type => new IdChoice(type.Id, type.Name))
             .ToList();
-
         LevelBox.ItemsSource = levels;
         TypeBox.ItemsSource = types;
         var viewLevel = doc.ActiveView?.GenLevel;
         LevelBox.SelectedItem = levels.FirstOrDefault(item => item.Id == viewLevel?.Id) ?? levels.FirstOrDefault();
         TypeBox.SelectedItem = types.FirstOrDefault();
-
         var elevation = viewLevel?.Elevation ?? 0;
         ElevationBox.Text = FormatLength(units, elevation);
+        PadElevationBox.Text = FormatLength(units, elevation);
         SlopeEndBox.Text = FormatLength(units, elevation);
-        RadiusBox.Text = FormatLength(units, UnitUtils.ConvertToInternalUnits(20, UnitTypeId.Meters));
+        SizeBox.Text = FormatLength(units, UnitUtils.ConvertToInternalUnits(20, UnitTypeId.Meters));
         GainBox.Text = FormatLength(units, UnitUtils.ConvertToInternalUnits(1, UnitTypeId.Meters));
-        ModeChanged(this, new RoutedEventArgs());
+        CellBox.Text = FormatLength(units, UnitUtils.ConvertToInternalUnits(5, UnitTypeId.Meters));
     }
 
-    private void ModeChanged(object sender, RoutedEventArgs e)
+    private void ShowTools()
     {
-        if (ElevationPanel is null)
+        if (ModifyTools is null)
             return;
-
-        var mode = SelectedMode();
-        ElevationPanel.Visibility = mode is TopoMode.NewPad or TopoMode.AddPoints ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        OffsetBox.Visibility = mode == TopoMode.AddPoints ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        ShapePanel.Visibility = mode == TopoMode.ShapeByPoint ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        SmoothPanel.Visibility = mode == TopoMode.Smooth ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        SlopePanel.Visibility = mode == TopoMode.SlopePath ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
-        Hint.Text = mode switch
+        var modify = PageModify.IsChecked == true;
+        var points = PagePoints.IsChecked == true;
+        var create = PageCreate.IsChecked == true;
+        var tool = CurrentTool();
+        ModifyTools.Visibility = modify ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        PointTools.Visibility = points ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        PointActions.Visibility = points ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        CreateOptions.Visibility = create ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        ShapeOptions.Visibility = tool is TopoTool.Shape or TopoTool.Mesh ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        SmoothOptions.Visibility = tool == TopoTool.Smooth ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        InflateOptions.Visibility = tool == TopoTool.Inflate ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        EffectButtons.Visibility = tool is TopoTool.Smooth or TopoTool.Inflate ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        GridOptions.Visibility = tool is TopoTool.Smooth or TopoTool.Inflate or TopoTool.Mesh ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        PointOptions.Visibility = tool == TopoTool.Point ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        SlopeOptions.Visibility = tool == TopoTool.Slope ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        Hint.Text = tool switch
         {
-            TopoMode.NewPad => "In a plan view, pick two opposite corners. The pad is flat at Elevation.",
-            TopoMode.NewFromLines => "Select model lines drawn at their contour height, then click Finish. Detail lines are ignored.",
-            TopoMode.FromEdges => "Select walls, floors, roofs, or model lines, then click Finish. The new surface passes through their top edges.",
-            TopoMode.AddPoints => "Pick a surface, then click inside it. Esc ends the command. Uncheck the offset box to use a fixed elevation.",
-            TopoMode.AddLines => "Pick a surface, then select model lines to stamp on it. Their height becomes the new ground height.",
-            TopoMode.ShapeByPoint => "Pick a surface, then click where it should change. Each click applies Height per click at the center, fading to zero at Radius.",
-            TopoMode.Smooth => "Pick a surface. Interior points move toward their neighbors. More passes look smoother and follow the original contours less closely.",
-            TopoMode.InsertMidpoint => "Pick a surface, then two spots. A point is inserted halfway between them so the slope can be edited.",
-            TopoMode.SlopePath => "Pick a surface, then the start and the end. Ground along that line is pulled to the end elevation or the slope angle.",
+            TopoTool.Shape => "Click the surface. Each click raises or lowers the center by Gain, fading out to the blue ring. Shape size is that outer ring.",
+            TopoTool.Smooth => "Smoothing level 1 stays closer to the contours. Level 4 is softer. Preview, then Apply.",
+            TopoTool.Inflate => "Negative digs a basin, positive raises a dome. The blue grid is the cell size used to shape it.",
+            TopoTool.Mesh => "The grid shows the edit spacing. Click near a point to push it by Gain.",
+            TopoTool.Point => "Click the surface to drop a point. Relative adds the elevation to the ground there. Otherwise it is a fixed height.",
+            TopoTool.Mid => "Click two spots. A point is inserted halfway between them.",
+            TopoTool.Slope => "Click the start, then the end. Ground along that line follows the end elevation or the slope angle.",
+            TopoTool.Split => "Click two spots to crease the surface between them.",
+            TopoTool.Pad => "In a plan view, click two opposite corners.",
             _ => "",
         };
     }
 
-    private void ShapeChanged(object sender, RoutedEventArgs e)
+    private TopoTool CurrentTool()
     {
-        if (GainBox is null)
-            return;
-        GainBox.IsEnabled = ShapeSmooth?.IsChecked != true;
+        if (PageCreate?.IsChecked == true)
+            return TopoTool.Pad;
+        if (PagePoints?.IsChecked == true)
+        {
+            if (ToolMid.IsChecked == true) return TopoTool.Mid;
+            if (ToolSlope.IsChecked == true) return TopoTool.Slope;
+            if (ToolSplit.IsChecked == true) return TopoTool.Split;
+            return TopoTool.Point;
+        }
+
+        if (ToolSmooth?.IsChecked == true) return TopoTool.Smooth;
+        if (ToolInflate?.IsChecked == true) return TopoTool.Inflate;
+        if (ToolMesh?.IsChecked == true) return TopoTool.Mesh;
+        return TopoTool.Shape;
     }
 
-    private void SlopeChanged(object sender, RoutedEventArgs e)
+    private void PageChanged(object sender, RoutedEventArgs e) => ShowTools();
+    private void ToolChanged(object sender, RoutedEventArgs e) => ShowTools();
+    private void PickClick(object sender, RoutedEventArgs e) => _session.PickSurface();
+    private void AddLinesClick(object sender, RoutedEventArgs e) => _session.AddLines();
+    private void AddEdgesClick(object sender, RoutedEventArgs e) => _session.AddEdges();
+    private void CreateLinesClick(object sender, RoutedEventArgs e) => _session.CreateFromLines();
+    private void CreateEdgesClick(object sender, RoutedEventArgs e) => _session.CreateFromEdges();
+    private void PreviewClick(object sender, RoutedEventArgs e) => _session.PreviewEffect();
+    private void ApplyClick(object sender, RoutedEventArgs e) => _session.ApplyEffect();
+    private void UndoClick(object sender, RoutedEventArgs e) => _session.Undo();
+    private void RevertClick(object sender, RoutedEventArgs e) => _session.Revert();
+
+    private void DensityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (SlopeEndBox is null)
-            return;
-        var byAngle = SlopeAngle.IsChecked == true;
-        SlopeEndBox.IsEnabled = !byAngle;
-        SlopeDegreesBox.IsEnabled = byAngle;
+        if (DensityLabel is not null)
+            DensityLabel.Text = ((int)Math.Round(e.NewValue)).ToString(CultureInfo.CurrentCulture);
     }
 
-    private void RunClick(object sender, RoutedEventArgs e)
+    private void PassChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
+        if (PassLabel is not null)
+            PassLabel.Text = ((int)Math.Round(e.NewValue)).ToString(CultureInfo.CurrentCulture);
+    }
+
+    private void InflateChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (InflateLabel is not null)
+            InflateLabel.Text = ((int)Math.Round(e.NewValue)).ToString(CultureInfo.CurrentCulture);
+    }
+
+    private void RotationChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (RotationLabel is not null)
+            RotationLabel.Text = $"{(int)Math.Round(e.NewValue)}°";
+    }
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
         LoadDocument();
-        var doc = _uiApp.ActiveUIDocument?.Document;
-        if (doc is null)
-        {
-            Report("Open a project first.", error: true);
-            return;
-        }
-
-        var mode = SelectedMode();
-        var creates = mode is TopoMode.NewPad or TopoMode.NewFromLines or TopoMode.FromEdges;
-        TryChoice(LevelBox, out var levelId);
-        TryChoice(TypeBox, out var typeId);
-        if (creates && (levelId == ElementId.InvalidElementId || typeId == ElementId.InvalidElementId))
-        {
-            Report("This project needs a level and a toposolid type before a new surface can be created.", error: true);
-            return;
-        }
-
-        var units = doc.GetUnits();
-        double elevation = 0, radius = 1, gain = 0, slopeEnd = 0, degrees = 0;
-        if (mode is TopoMode.NewPad or TopoMode.AddPoints)
-        {
-            if (!TryLength(units, ElevationBox.Text, out elevation))
-            {
-                Report("Elevation is not a length. Example: 5000 or 5 m.", error: true);
-                return;
-            }
-        }
-
-        if (mode == TopoMode.ShapeByPoint)
-        {
-            if (!TryLength(units, RadiusBox.Text, out radius) || radius <= 0)
-            {
-                Report("Radius is not a length. Example: 20000 or 20 m.", error: true);
-                return;
-            }
-
-            var smoothOut = ShapeSmooth.IsChecked == true;
-            if (!smoothOut && (!TryLength(units, GainBox.Text, out gain) || gain < 0))
-            {
-                Report("Height per click is not a length. Example: 1000 or 1 m.", error: true);
-                return;
-            }
-        }
-
-        if (!int.TryParse(RingsBox.Text.Trim(), NumberStyles.Integer, CultureInfo.CurrentCulture, out var rings))
-            rings = 5;
-        if (!int.TryParse(PassesBox.Text.Trim(), NumberStyles.Integer, CultureInfo.CurrentCulture, out var passes))
-            passes = 2;
-
-        if (mode == TopoMode.SlopePath)
-        {
-            if (SlopeAngle.IsChecked == true)
-            {
-                if (!TryDegrees(SlopeDegreesBox.Text, out degrees))
-                {
-                    Report("Slope angle must be a number of degrees, for example -15.", error: true);
-                    return;
-                }
-            }
-            else if (!TryLength(units, SlopeEndBox.Text, out slopeEnd))
-            {
-                Report("End elevation is not a length.", error: true);
-                return;
-            }
-        }
-
-        var request = new TopoRequest
-        {
-            Mode = mode,
-            LevelId = levelId,
-            TypeId = typeId,
-            Elevation = elevation,
-            ElevationIsOffset = OffsetBox.IsChecked == true,
-            Radius = radius,
-            Rings = Math.Clamp(rings, 1, 12),
-            Gain = gain,
-            Shape = ShapeLower.IsChecked == true ? ShapeAction.Lower
-                : ShapeSmooth.IsChecked == true ? ShapeAction.SmoothOut
-                : ShapeAction.Raise,
-            SmoothPasses = Math.Clamp(passes, 1, 4),
-            SlopeByAngle = SlopeAngle.IsChecked == true,
-            SlopeDegrees = degrees,
-            SlopeEndElevation = slopeEnd,
-        };
-
-        _busy = true;
-        RunButton.IsEnabled = false;
-        Status.Text = "Working in Revit. Follow the status bar. Press Esc to finish a click tool.";
-        _handler.Request = request;
-        _handler.Window = this;
-        if (_event.Raise() != ExternalEventRequest.Accepted)
-            Finish("Revit is busy. Try again in a moment.", error: true);
     }
 
-    private TopoMode SelectedMode()
-    {
-        if (ModeLines.IsChecked == true) return TopoMode.NewFromLines;
-        if (ModeEdges.IsChecked == true) return TopoMode.FromEdges;
-        if (ModePoints.IsChecked == true) return TopoMode.AddPoints;
-        if (ModeAddLines.IsChecked == true) return TopoMode.AddLines;
-        if (ModeShape.IsChecked == true) return TopoMode.ShapeByPoint;
-        if (ModeSmooth.IsChecked == true) return TopoMode.Smooth;
-        if (ModeMid.IsChecked == true) return TopoMode.InsertMidpoint;
-        if (ModeSlope.IsChecked == true) return TopoMode.SlopePath;
-        return TopoMode.NewPad;
-    }
-
-    private void Report(string message, bool error)
-    {
-        Status.Text = message;
-        Status.Foreground = error ? System.Windows.Media.Brushes.DarkRed : new SolidColorBrush(System.Windows.Media.Color.FromRgb(69, 90, 100));
-    }
-
-    private static bool TryChoice(WpfCombo box, out ElementId id)
+    private static bool TryChoice(System.Windows.Controls.ComboBox box, out ElementId id)
     {
         if (box.SelectedItem is IdChoice choice)
         {
@@ -272,20 +279,17 @@ public partial class TopoWindow : Window
 
 public sealed class TopoEventHandler : IExternalEventHandler
 {
-    public TopoRequest? Request { get; set; }
-    public TopoWindow? Window { get; set; }
+    public Action<UIApplication>? Work { get; set; }
+    public TopoSession? Session { get; set; }
 
     public void Execute(UIApplication app)
     {
-        var request = Request;
-        Request = null;
+        var work = Work;
+        Work = null;
         string? message = null;
-        var failed = false;
         try
         {
-            Window?.Hide();
-            if (request is not null)
-                TopoEditor.Run(app, request);
+            work?.Invoke(app);
         }
         catch (Autodesk.Revit.Exceptions.OperationCanceledException)
         {
@@ -294,11 +298,10 @@ public sealed class TopoEventHandler : IExternalEventHandler
         catch (Exception ex)
         {
             message = ex.Message;
-            failed = true;
         }
         finally
         {
-            Window?.Finish(message ?? request?.Result ?? "", failed);
+            Session?.OnApiFinished(message);
         }
     }
 

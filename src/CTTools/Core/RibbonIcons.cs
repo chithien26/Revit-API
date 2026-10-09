@@ -28,6 +28,123 @@ public static class RibbonIcons
         p.Line(0.32, 0.18, 0.68, 0.14);
     });
 
+    public static Func<int, ImageSource> CreateTopo { get; } = IconFactory.Drawing("#1565C0", p =>
+    {
+        p.Line(0.18, 0.72, 0.82, 0.72);
+        p.Line(0.18, 0.72, 0.18, 0.28);
+        p.Line(0.82, 0.72, 0.82, 0.28);
+        p.Circle(0.34, 0.42, 0.05);
+        p.Circle(0.5, 0.34, 0.05);
+        p.Circle(0.66, 0.46, 0.05);
+    });
+
+    public static Func<int, ImageSource> Road { get; } = IconFactory.Drawing("#455A64", p =>
+    {
+        p.Line(0.12, 0.62, 0.88, 0.28);
+        p.Line(0.12, 0.38, 0.88, 0.72);
+    });
+
+    public static Func<int, ImageSource> Excavate { get; } = IconFactory.Drawing("#6D4C41", p =>
+    {
+        p.Line(0.12, 0.32, 0.88, 0.32);
+        p.Line(0.28, 0.32, 0.4, 0.72);
+        p.Line(0.72, 0.32, 0.6, 0.72);
+        p.Line(0.4, 0.72, 0.6, 0.72);
+    });
+
+    public static Func<int, ImageSource> AlignTopo { get; } = IconFactory.Drawing("#2E7D32", p =>
+    {
+        p.Line(0.16, 0.78, 0.84, 0.62);
+        p.Line(0.5, 0.18, 0.5, 0.58);
+        p.Line(0.38, 0.46, 0.5, 0.62);
+        p.Line(0.62, 0.46, 0.5, 0.62);
+    });
+
+    public static Func<int, ImageSource> CutFill { get; } = IconFactory.Drawing("#EF6C00", p =>
+    {
+        p.Line(0.18, 0.7, 0.46, 0.7);
+        p.Line(0.54, 0.32, 0.82, 0.32);
+        p.Line(0.68, 0.18, 0.68, 0.46);
+    });
+
+    public static Func<int, ImageSource> EditWall { get; } = IconFactory.Drawing("#6D4C41", p =>
+    {
+        p.Box(0.28, 0.22, 0.72, 0.78);
+        p.Line(0.28, 0.5, 0.72, 0.5);
+    });
+
+    public static Func<int, ImageSource> ShapeWall { get; } = IconFactory.Drawing("#6D4C41", p =>
+    {
+        p.Line(0.16, 0.72, 0.84, 0.58);
+        p.Line(0.28, 0.72, 0.28, 0.3);
+        p.Line(0.72, 0.58, 0.72, 0.22);
+        p.Line(0.28, 0.3, 0.72, 0.22);
+    });
+
+    public static Func<int, ImageSource> WallRailing { get; } = IconFactory.Drawing("#6D4C41", p =>
+    {
+        p.Line(0.2, 0.62, 0.8, 0.62);
+        p.Line(0.3, 0.62, 0.3, 0.28);
+        p.Line(0.5, 0.62, 0.5, 0.28);
+        p.Line(0.7, 0.62, 0.7, 0.28);
+    });
+
+    public static Func<int, ImageSource> SetElevation { get; } = IconFactory.Drawing("#1565C0", p =>
+    {
+        p.Line(0.18, 0.7, 0.82, 0.7);
+        p.Line(0.5, 0.28, 0.5, 0.62);
+        p.Line(0.4, 0.5, 0.5, 0.62);
+        p.Line(0.6, 0.5, 0.5, 0.62);
+    });
+
+    public static Func<int, ImageSource> SetCoordinate { get; } = IconFactory.Drawing("#1565C0", p =>
+    {
+        p.Line(0.22, 0.78, 0.22, 0.22);
+        p.Line(0.22, 0.78, 0.78, 0.78);
+        p.Circle(0.55, 0.42, 0.08);
+    });
+
+    public static Func<int, ImageSource> GetLocation { get; } = IconFactory.Drawing("#1565C0", p =>
+    {
+        p.Line(0.5, 0.18, 0.5, 0.62);
+        p.Line(0.32, 0.44, 0.5, 0.62);
+        p.Line(0.68, 0.44, 0.5, 0.62);
+        p.Circle(0.5, 0.74, 0.08);
+    });
+
+    public static Func<int, ImageSource> CadPoints { get; } = IconFactory.Drawing("#455A64", p =>
+    {
+        p.Circle(0.3, 0.68, 0.07);
+        p.Circle(0.55, 0.42, 0.07);
+        p.Circle(0.72, 0.7, 0.07);
+    });
+
+    public static Func<int, ImageSource> Planting { get; } = IconFactory.Drawing("#2E7D32", p =>
+    {
+        p.Circle(0.5, 0.58, 0.16);
+        p.Line(0.5, 0.42, 0.5, 0.18);
+    });
+
+    public static Func<int, ImageSource> Scatter { get; } = IconFactory.Drawing("#2E7D32", p =>
+    {
+        p.Circle(0.3, 0.66, 0.08);
+        p.Circle(0.68, 0.66, 0.08);
+        p.Circle(0.48, 0.34, 0.08);
+    });
+
+    public static Func<int, ImageSource> Elevation { get; } = IconFactory.Drawing("#EF6C00", p =>
+    {
+        p.Line(0.18, 0.78, 0.82, 0.28);
+        p.Line(0.18, 0.28, 0.82, 0.28);
+    });
+
+    public static Func<int, ImageSource> WallLayout { get; } = IconFactory.Drawing("#546E7A", p =>
+    {
+        p.Line(0.22, 0.22, 0.22, 0.78);
+        p.Line(0.5, 0.22, 0.5, 0.78);
+        p.Line(0.78, 0.22, 0.78, 0.78);
+    });
+
     /// <summary>Two stacked dimension strings: overall + chain.</summary>
     public static Func<int, ImageSource> AutoDimAll { get; } = IconFactory.Drawing(AnnotateColor, p =>
     {

@@ -1,0 +1,39 @@
+<Window x:Class="CTTools.Features.Terrain.AlignView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Align to surface"
+        Width="420"
+        SizeToContent="Height"
+        WindowStyle="ToolWindow"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Background="#ECEFF1"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/CTTools;component/Features/Terrain/TerrainTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <StackPanel Margin="14">
+        <TextBlock Text="Drops the current selection onto the surface. If nothing is selected, you pick the objects next. Offset is in millimeters." TextWrapping="Wrap" Margin="0,0,0,10" Foreground="#455A64"/>
+        <TextBlock Text="SURFACE" Style="{StaticResource Label}"/>
+        <ComboBox ItemsSource="{Binding Hosts}" SelectedItem="{Binding SelectedHost}"/>
+        <TextBlock Text="OFFSET (mm)" Style="{StaticResource Label}"/>
+        <TextBox Text="{Binding OffsetText, UpdateSourceTrigger=PropertyChanged}"/>
+        <Button Content="Align" Command="{Binding AlignCommand}"/>
+        <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Margin="0,8,0,0">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Foreground" Value="#37474F"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsError}" Value="True">
+                            <Setter Property="Foreground" Value="#B71C1C"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+    </StackPanel>
+</Window>
